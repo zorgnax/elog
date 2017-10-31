@@ -1231,22 +1231,22 @@ alog - An Apache access log viewer
 
 =head1 OPTIONS
 
--a[<n>]    show last n accesses with info spread vertically
--d=<file>  default log when one isn't found for cwd
--f         tail -f the log
--g         graph requests at hourly intervals
--gd        graph requests at daily intervals
--h         displays this help text
--i         info and statistics
--l         list available logs
--ll        list available logs verbosely
--p         print log path
--r<n>      rotation number
--v         vim the log
+    -a[<n>]    show last n accesses with info spread vertically
+    -d=<file>  default log when one isn't found for cwd
+    -f         tail -f the log
+    -g         graph requests at hourly intervals
+    -gd        graph requests at daily intervals
+    -h         displays this help text
+    -i         info and statistics
+    -l         list available logs
+    -ll        list available logs verbosely
+    -p         print log path
+    -r<n>      rotation number
+    -v         vim the log
 
-<name>     name of the log you are trying to access (regexp),
-           if name contains a "/", name is treated as a file name,
-           default is the error log for the cwd.
+    <name>     name of the log you are trying to access (regexp),
+               if name contains a "/", name is treated as a file name,
+               default is the error log for the cwd.
 
 =head1 DESCRIPTION
 
