@@ -90,10 +90,12 @@ sub show_graph {
         }
     }
     $count = 0;
+    my $entryp;
     for my $entry (@entries) {
         $count++;
         $entry->{count} = $count;
-        show_graph_entry($entry, $max);
+        show_graph_entry($entry, $entryp, $max);
+        $entryp = $entry;
     }
 }
 
@@ -121,7 +123,7 @@ sub add_error_to_graph {
 }
 
 sub show_graph_entry {
-    my ($entry, $max) = @_;
+    my ($entry, $entryp, $max) = @_;
     my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($entry->{start});
     $mon += 1;
     my $hour2;
@@ -134,11 +136,13 @@ sub show_graph_entry {
     else {
         $hour2 = $hour;
     }
+    my $offset = 16;
+    $entry->{monday} = "$mon/$mday";
     if ($opts{interval} >= 24 * 60 * 60) {
         printf "%-5s: ", "$mon/$mday";
     }
     elsif ($opts{interval} >= 60 * 60) {
-        if ($hour == 0 || $entry->{count} == 1) {
+        if (!$entryp || $entryp->{monday} ne $entry->{monday}) {
             printf "%-5s %2d: ", "$mon/$mday", $hour2;
         }
         else {
@@ -146,7 +150,8 @@ sub show_graph_entry {
         }
     }
     else {
-        if ($hour == 0 && $min == 0 || $entry->{count} == 1) {
+        $offset += 3;
+        if (!$entryp || $entryp->{monday} ne $entry->{monday}) {
             printf "%-5s %2d:%02d: ", "$mon/$mday", $hour2, $min;
         }
         else {
@@ -155,7 +160,7 @@ sub show_graph_entry {
     }
     my $bar = "";
     if ($entry->{total}) {
-        my $size = int(($entry->{total} / $max) * ($columns - 16));
+        my $size = int(($entry->{total} / $max) * ($columns - $offset));
         $bar = "#" x $size;
         if ($size) {
             $bar .= " ";

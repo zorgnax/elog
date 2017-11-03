@@ -1,5 +1,8 @@
 Revision history for App::Elog
 
+0.05  Fri Nov  3 13:13:25 CDT 2017
+    - Better graph labels
+
 0.04  Fri Nov  3 12:22:29 CDT 2017
     - Arbitrary intervals on graphs
 

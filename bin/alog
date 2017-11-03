@@ -159,14 +159,16 @@ sub show_graph {
             $max = $entry->{total};
         }
     }
+    my $entryp;
     for my $entry (@entries) {
-        show_graph_entry($entry, $max);
+        show_graph_entry($entry, $entryp, $max);
+        $entryp = $entry;
     }
     close $fh;
 }
 
 sub show_graph_entry {
-    my ($entry, $max) = @_;
+    my ($entry, $entryp, $max) = @_;
     my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($entry->{start});
     $mon += 1;
     my $hour2;
@@ -179,11 +181,13 @@ sub show_graph_entry {
     else {
         $hour2 = $hour;
     }
+    $entry->{monday} = "$mon/$mday";
+    my $offset = 16;
     if ($opts{interval} >= 24 * 60 * 60) {
         printf "%-5s: ", "$mon/$mday";
     }
     elsif ($opts{interval} >= 60 * 60) {
-        if ($hour == 0 || $entry->{count} == 1) {
+        if (!$entryp || $entryp->{monday} ne $entry->{monday}) {
             printf "%-5s %2d: ", "$mon/$mday", $hour2;
         }
         else {
@@ -191,14 +195,15 @@ sub show_graph_entry {
         }
     }
     else {
-        if ($hour == 0 && $min == 0 || $entry->{count} == 1) {
+        $offset += 3;
+        if (!$entryp || $entryp->{monday} ne $entry->{monday}) {
             printf "%-5s %2d:%02d: ", "$mon/$mday", $hour2, $min;
         }
         else {
             printf "      %2d:%02d: ", $hour2, $min;
         }
     }
-    my $size = int(($entry->{total} / $max) * ($columns - 16));
+    my $size = int(($entry->{total} / $max) * ($columns - $offset));
     my $bar = "";
     my $bar2 = "";
     if ($entry->{total} && !$size) {
