@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+
 use strict;
 use warnings;
 use Cwd ();
@@ -102,13 +103,13 @@ sub add_error_to_graph {
     my $entry = $entries->[-1];
     if (!$entry) {
         $entry = {};
-        $entry->{start} = graph_start($e->{date});
+        $entry->{start} = $e->{date};
         push @$entries, $entry;
     }
-    elsif ($e->{date} < $entry->{start}) {
+    if ($e->{date} < $entry->{start}) {
         while (1) {
             my $entry2 = {};
-            $entry2->{start} = $entry->{start} - $opts{period};
+            $entry2->{start} = $entry->{start} - $opts{interval};
             $entry = $entry2;
             push @$entries, $entry;
             if ($e->{date} >= $entry->{start}) {
@@ -133,14 +134,24 @@ sub show_graph_entry {
     else {
         $hour2 = $hour;
     }
-    if ($opts{interval} eq "daily") {
+    if ($opts{interval} >= 24 * 60 * 60) {
         printf "%-5s: ", "$mon/$mday";
     }
-    elsif ($hour == 0 || $entry->{count} == 1) {
-        printf "%-5s %2d: ", "$mon/$mday", $hour2;
+    elsif ($opts{interval} >= 60 * 60) {
+        if ($hour == 0 || $entry->{count} == 1) {
+            printf "%-5s %2d: ", "$mon/$mday", $hour2;
+        }
+        else {
+            printf "      %2d: ", $hour2;
+        }
     }
     else {
-        printf "      %2d: ", $hour2;
+        if ($hour == 0 && $min == 0 || $entry->{count} == 1) {
+            printf "%-5s %2d:%02d: ", "$mon/$mday", $hour2, $min;
+        }
+        else {
+            printf "      %2d:%02d: ", $hour2, $min;
+        }
     }
     my $bar = "";
     if ($entry->{total}) {
@@ -152,16 +163,6 @@ sub show_graph_entry {
         $bar .= $entry->{total};
     }
     print "$bar\n";
-}
-
-sub graph_start {
-    my ($date) = @_;
-    my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($date);
-    if ($opts{interval} eq "daily") {
-        $hour = 0;
-    }
-    my $start = POSIX::mktime(0, 0, $hour, $mday, $mon, $year, -1, -1, -1);
-    return $start;
 }
 
 sub myglob {
@@ -550,7 +551,7 @@ sub show_log_info {
         }
     }
     my $name = $log->{name};
-    my $line = sprintf "%s %-33s %-15s %s", $selected, $name, "$size$rinfo", $updated;
+    my $line = sprintf "%s %-33s %-16s %s", $selected, $name, "$size$rinfo", $updated;
     print "$line\n";
 }
 
@@ -836,16 +837,17 @@ sub get_opts {
         elsif ($arg =~ /^-f$/) {
             $opts{action} = "tailf";
         }
-        elsif ($arg =~ /^-g([dh]?)$/) {
+        elsif ($arg =~ /^-g(\d+|[dh]|)$/) {
             $opts{action} = "graph";
             my $interval = $1 || "";
             if ($interval eq "d") {
-                $opts{interval} = "daily";
-                $opts{period} = 24 * 60 * 60;
+                $opts{interval} = 24 * 60 * 60;
+            }
+            elsif ($interval eq "h" || !$interval) {
+                $opts{interval} = 60 * 60;
             }
             else {
-                $opts{interval} = "hourly";
-                $opts{period} = 60 * 60;
+                $opts{interval} = $interval;
             }
         }
         elsif ($arg =~ /^(--?help|-h|-\?)$/) {
