@@ -594,7 +594,7 @@ sub show_log_info_verbose {
     my $docroot2 = "";
     if ($log->{vhost} && $log->{vhost}{docroot}) {
         $docroot = $log->{vhost}{docroot};
-        $docroot2 = Cwd::abs_path($docroot);
+        $docroot2 = $log->{vhost}{docroot2};
     }
     print "$selected$log->{name}\n";
     print "    file $log->{file}\n";
@@ -706,6 +706,27 @@ sub get_logs {
     if (-e "/usr/local/apache/logs/error_log") {
         add_log("/usr/local/apache/logs/error_log");
     }
+    for my $log (@logs) {
+        my $docroot = "";
+        if ($log->{vhost} && $log->{vhost}{docroot2}) {
+            $docroot = $log->{vhost}{docroot2};
+        }
+        $log->{begcmp} = begcmp($ENV{PWD}, $docroot);
+    }
+    @logs = sort by_begcmp @logs;
+}
+
+sub begcmp {
+    my ($a, $b) = @_;
+    my $count = 0;
+    my $min = length($a) < length($b) ? length($a) : length($b);
+    my $i = 0;
+    for ($i = 0; $i < $min; $i++) {
+        if (substr($a, $i, 1) ne substr($b, $i, 1)) {
+            return $i;
+        }
+    }
+    return $i;
 }
 
 sub get_logs_from_apache_conf {
@@ -741,6 +762,7 @@ sub get_logs_from_apache_conf {
             }
             elsif ($line =~ /^\s*DocumentRoot\s+(.+)/ims) {
                 $vhost->{docroot} = unquote($1);
+                $vhost->{docroot2} = Cwd::abs_path($vhost->{docroot});
             }
             elsif ($line =~ /^\s*ServerRoot\s+(\S+)/ims) {
                 $vhost->{servroot} = unquote($1);
@@ -757,7 +779,7 @@ sub get_logs_from_apache_conf {
         close $fh;
     }
     my %logs;
-    for my $log (sort byfile @logs_all) {
+    for my $log (@logs_all) {
         if ($log && $log->{vhost}) {
             if ($log->{vhost}{invalid}) {
                 next;
@@ -780,8 +802,8 @@ sub env_replace {
     $log->{file} =~ s/\$\{(\w+)\}/$ENV{$1}/ge;
 }
 
-sub byfile {
-    return $a->{name} cmp $b->{name};
+sub by_begcmp {
+    return $b->{begcmp} <=> $a->{begcmp} || $a->{name} cmp $b->{name};
 }
 
 sub basename {
