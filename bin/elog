@@ -644,7 +644,8 @@ sub select_log {
         select_log_by_name($opts{default});
     }
     if (!$selected_log && @logs) {
-        $selected_log = $logs[0];
+        my @logs2 = sort bybegcmp @logs;
+        $selected_log = $logs2[0];
         $selected_log->{selected} = 1;
         return;
     }
@@ -713,7 +714,7 @@ sub get_logs {
         }
         $log->{begcmp} = begcmp($ENV{PWD}, $docroot);
     }
-    @logs = sort by_begcmp @logs;
+    @logs = sort byname @logs;
 }
 
 sub begcmp {
@@ -802,8 +803,12 @@ sub env_replace {
     $log->{file} =~ s/\$\{(\w+)\}/$ENV{$1}/ge;
 }
 
-sub by_begcmp {
+sub bybegcmp {
     return $b->{begcmp} <=> $a->{begcmp} || $a->{name} cmp $b->{name};
+}
+
+sub byname {
+    return $a->{name} cmp $b->{name};
 }
 
 sub basename {
