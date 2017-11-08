@@ -261,6 +261,9 @@ sub show_info {
             $stats->{maxtime} = $a->{reqtime};
         }
         update_stats($stats, $a);
+        if ($opts{last} && $count == $opts{last}) {
+            last;
+        }
     }
     $stats->{count} = $count;
     close $fh;
@@ -906,9 +909,6 @@ sub select_log {
         return;
     }
     select_log_by_cwd();
-    if (!$selected_log && $opts{default}) {
-        select_log_by_name($opts{default});
-    }
     if (!$selected_log && @logs) {
         my @logs2 = sort bybegcmp @logs;
         $selected_log = $logs2[0];
@@ -1013,7 +1013,7 @@ sub get_logs_from_apache_conf {
     my $host = {};
     my $vhost = $host;
     my %vhosts;
-    for my $file (@files) {
+    for my $file (sort @files) {
         chomp $file;
         next if $file =~ /\bavailable\b/;
         open my $fh, $file or next;
@@ -1175,9 +1175,6 @@ sub get_opts {
         elsif ($arg =~ /^-a(\d*)$/) {
             $opts{last} = $1;
         }
-        elsif ($arg =~ /^-d(=(.*))?$/) {
-            $opts{default} = $1 ? $2 : shift(@ARGV);
-        }
         elsif ($arg =~ /^-f$/) {
             $opts{action} = "tailf";
         }
@@ -1231,7 +1228,6 @@ sub usage {
 Usage: alog [<options>] [<name>]
 
 -a[<n>]    show last n accesses with info spread vertically
--d=<file>  default log when one isn't found for cwd
 -f         tail -f the log
 -g         graph requests at hourly intervals
 -gd        graph requests at daily intervals
@@ -1265,7 +1261,6 @@ alog - An Apache access log viewer
 =head1 OPTIONS
 
     -a[<n>]    show last n accesses with info spread vertically
-    -d=<file>  default log when one isn't found for cwd
     -f         tail -f the log
     -g         graph requests at hourly intervals
     -gd        graph requests at daily intervals
@@ -1326,11 +1321,9 @@ The -a option will show the data fields of the access log entry on
 their own line, so you don't have to scroll right to see the part
 you are interested in.
 
-The -g option will show a graph of the number of requests in an hourly
-interval.
+The -g option will show a graph of the number of requests in hourly intervals.
 
-The -gd option will show a graph of the number of requests in a daily
-interval.
+The -gd option will show a graph of the number of requests in daily intervals.
 
 =head1 METACPAN
 
