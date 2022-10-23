@@ -22,7 +22,7 @@ Revision history for App::Elog
     - Removed -? option, now its only --help, -help, or -h for that.
 
     - Changed -f option from doing a tail -f to filtering results based
-      on a given regex. If you want to tail -f just tail -f `elog -p`.
+      on a given regexp. If you want to tail -f just tail -f `elog -p`.
 
     - The -l option shows the full path of the log file, not just the
       basename of the file.

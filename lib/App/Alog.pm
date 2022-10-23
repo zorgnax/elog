@@ -18,7 +18,7 @@ alog - An Apache access log viewer
 
 =head1 OPTIONS
 
-    -f <regex>        filter based on regex
+    -f <regexp>       filter based on regexp
     -g [<interval>]   graph errors
     -h                displays this help text
     -i                show info and statistics
@@ -71,7 +71,7 @@ access log uses.
 
 The -p option will show the path the selected access log file.
 
-The -f option will filter based on a given regex for the -v or -g option.
+The -f option will filter based on a given regexp for the -v or -g option.
 
 The -i option will show statistics about the access log file such
 as how many requests there were, their time frame, and most active

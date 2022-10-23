@@ -20,7 +20,7 @@ elog - An Apache error log viewer
 
 =head1 OPTIONS
 
-    -f <regex>        filter based on regex
+    -f <regexp>       filter based on regexp
     -g [<interval>]   graph errors
     -h                displays this help text
     -i                show info and statistics
@@ -69,7 +69,7 @@ that error log is for.
 
 The -p option will show the path the selected error log file.
 
-The -f option will filter based on a given regex for the -v or -g option.
+The -f option will filter based on a given regexp for the -v or -g option.
 
 The -v option will verbosely show each error on a line by itself with
 extra info (time, ip, etc) on the line before.
