@@ -8,24 +8,28 @@ use Data::Dumper;
 
 my %opts;
 my @logs;
-my $host = {};
 my $selected_log;
+my $host = {};
 my %months = (
     Jan => 1, Feb => 2, Mar => 3, Apr => 4, May => 5, Jun => 6,
     Jul => 7, Aug => 8, Sep => 9, Oct => 10, Nov => 11, Dec => 12,
 );
 my $now = time();
 my $columns;
+my $line_count = 0;
 
 get_opts();
 get_logs();
 select_log();
 
 if ($opts{action} eq "list") {
-    list();
+    show_list();
 }
 elsif ($opts{action} eq "detailed_list") {
-    detailed_list();
+    show_detailed_list();
+}
+elsif ($opts{action} eq "verbose") {
+    show_verbose();
 }
 elsif ($opts{action} eq "info") {
     show_info();
@@ -35,12 +39,6 @@ elsif ($opts{action} eq "graph") {
 }
 elsif ($opts{action} eq "print") {
     print "$selected_log->{pfile}\n";
-}
-elsif ($opts{action} eq "tailf") {
-    system "tail", "-f", $selected_log->{pfile};
-}
-elsif ($opts{action} eq "vim") {
-    system "vim", $selected_log->{pfile};
 }
 else {
     if (!-t STDOUT) {
@@ -52,6 +50,39 @@ else {
     else {
         system "less", "-RIMS", $selected_log->{pfile};
     }
+}
+
+sub show_info {
+    my $info = {};
+    loop_errors(\&process_error_for_info, $info);
+
+    my $file = $selected_log->{pfile};
+    my $size = -s $file;
+    $size = human_readable($size);
+    print "$file\n";
+    print "size $size\n";
+
+    my $count = $info->{errors} || 0;
+    print "$count errors in $line_count lines\n";
+
+    my $from = $info->{from};
+    my $fromstr = datestr($from);
+    my $to = $info->{to};
+    my $tostr = datestr($to);
+    my $time_diff = time_diff_str2($from, $to);
+    if ($time_diff) {
+        print "spanning $time_diff\n";
+    }
+    print "from [$fromstr] to [$tostr]\n";
+}
+
+sub process_error_for_info {
+    my ($e, $info) = @_;
+    $info->{errors}++;
+    if (!$info->{from}) {
+        $info->{from} = $e->{date};
+    }
+    $info->{to} = $e->{date};
 }
 
 sub show_graph {
@@ -99,7 +130,7 @@ sub add_error_to_graph {
 }
 
 sub show_graph_entry {
-    my ($entry, $entryp, $max) = @_;
+    my ($entry, $prev, $max) = @_;
     my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime($entry->{start});
     $mon += 1;
     my $hour2;
@@ -118,7 +149,7 @@ sub show_graph_entry {
         printf "%-5s: ", "$mon/$mday";
     }
     elsif ($opts{interval} >= 60 * 60) {
-        if (!$entryp || $entryp->{monday} ne $entry->{monday}) {
+        if (!$prev || $prev->{monday} ne $entry->{monday}) {
             printf "%-5s %2d: ", "$mon/$mday", $hour2;
         }
         else {
@@ -127,7 +158,7 @@ sub show_graph_entry {
     }
     else {
         $offset += 3;
-        if (!$entryp || $entryp->{monday} ne $entry->{monday}) {
+        if (!$prev || $prev->{monday} ne $entry->{monday}) {
             printf "%-5s %2d:%02d: ", "$mon/$mday", $hour2, $min;
         }
         else {
@@ -150,32 +181,41 @@ sub get_rotations {
     my ($file) = @_;
     my $dir = dirname($file);
     opendir my $dh, $dir or return ();
-    my @array;
-    for my $dfile (readdir $dh) {
-        next if $dfile =~ /^\.\.?$/;
-        if ("$dir/$dfile" =~ /^\Q$file\E./) {
-            push @array, "$dir/$dfile";
+    my $array = [];
+    for my $name (readdir $dh) {
+        next if $name =~ /^\.\.?$/;
+        my $dfile = "$dir/$name";
+        if ($dfile =~ /^\Q$file\E.(.*?)(\.gz)?$/) {
+            my $r = {};
+            $r->{file} = $dfile;
+            $r->{name} = $1;
+            push @$array, $r;
         }
     }
     closedir $dh;
-    @array = natural_sort(@array);
-    return @array;
+    $array = natural_sort($array, "file");
+    return $array;
 }
 
 # Sorts files in a way that treats numbers as numbers, so if you have
 # files file1, file2, file10 it wouldn't sort it like file1, file10, file2.
 sub natural_sort {
-    my @array;
-    for my $entry (@_) {
-        my $entry2 = $entry;
-        $entry2 =~ s/(\d+)/sprintf("%05d", $1)/ge;
-        push @array, [$entry, $entry2];
+    my ($array, $key) = @_;
+    my @array2;
+    for my $entry (@$array) {
+        my $value = $entry->{$key};
+        $value =~ s/(\d+)/sprintf("%05d", $1)/ge;
+        push @array2, [$value, $entry];
     }
-    @array = sort {$a->[1] cmp $b->[1]} @array;
-    return map {$_->[0]} @array;
+    @array2 = sort {$a->[0] cmp $b->[0]} @array2;
+    my @array3;
+    for my $entry (@array2) {
+        push @array3, $entry->[1];
+    }
+    return \@array3;
 }
 
-sub show_info {
+sub show_verbose {
     loop_errors(\&show_error);
 }
 
@@ -213,7 +253,17 @@ sub loop_errors {
         open $fh, "<", $file or die "Can't open $file: $!\n";
     }
     my $e1;
+    my $filter = $opts{filter};
+    if ($filter) {
+        $filter = qr{$filter}i;
+    }
+    $line_count = 0;
+
     while (my $line = <$fh>) {
+        if ($filter && $line !~ $filter) {
+            next;
+        }
+        $line_count++;
         my $e2 = parse_error_line($line);
         if (!$e1) {
             $e1 = $e2;
@@ -249,8 +299,33 @@ sub show_error {
 sub datestr {
     my ($date) = @_;
     return "" if !$date;
-    my $datestr = POSIX::strftime("%a %b %d, %Y %I:%M:%S%P", localtime($date));
+    my $datestr = POSIX::strftime("%a %b %d, %Y %I:%M:%S %p", localtime($date));
     return $datestr;
+}
+
+# returns a string like "17 hours 5 minutes 2 seconds"
+sub time_diff_str2 {
+    my ($date1, $date2) = @_;
+    return "" if !$date1 || !$date2;
+    my $obj = time_diff_obj($date1, $date2);
+
+    my $str = "";
+    for my $key ("year", "month", "day", "hour", "minute", "second") {
+        if ($obj->{$key}) {
+            if ($str) {
+                $str .= " ";
+            }
+            $str .= "$obj->{$key} $key";
+            if ($obj->{$key} != 1) {
+                $str .= "s";
+            }
+        }
+    }
+
+    if ($date1 == $date2) {
+        $str = "0 seconds";
+    }
+    return $str;
 }
 
 # returns a string like "17 hours ago" or "in 5 seconds"
@@ -449,68 +524,37 @@ sub same_error {
     }
 }
 
-sub list {
+sub show_list {
     for my $log (@logs) {
         my $selected = $log->{selected} ? "*" : " ";
         my $size = "-";
         my $updated = "";
-        my $rinfo = "";
         if (-e $log->{file}) {
             $size = human_readable(-s $log->{file});
             my $mtime = (stat($log->{file}))[9];
             $updated = time_diff_str($mtime, $now);
-            my @rotations = get_rotations($log->{file});
-            my $rcount = @rotations;
-            if ($rcount) {
-                my $rsize = 0;
-                for my $rotation (@rotations) {
-                    $rsize += -s $rotation || 0;
-                }
-                $rsize = human_readable($rsize);
-                $rinfo = " +$rcount $rsize";
-            }
         }
         my $file = $log->{file};
-        my $line = sprintf "%s %-50s %-16s %s", $selected, $file, "$size$rinfo", $updated;
+        my $line = sprintf "%s %-60s %-10s %s", $selected, $file, $size, $updated;
         print "$line\n";
     }
 }
 
-sub detailed_list {
+sub show_detailed_list {
     for my $log (@logs) {
         my $size = "-";
         my $updated = "";
-        my $rinfo = "";
-        my @rotations2;
         if (-e $log->{file}) {
             $size = human_readable(-s $log->{file});
             my $mtime = (stat($log->{file}))[9];
             $updated = datestr($mtime) . " (" . time_diff_str($mtime, $now) . ")";
-            my @rotations = get_rotations($log->{file});
-            my $rcount = @rotations;
-            if ($rcount) {
-                my $rsize = 0;
-                for my $rotation (@rotations) {
-                    $rsize += -s $rotation || 0;
-                    if ($rotation =~ /^\Q$log->{file}\E.(.*?)(\.gz)?$/) {
-                        my $r = {};
-                        $r->{name} = $1;
-                        $r->{size} = human_readable(-s $rotation);
-                        my $mtime = (stat($rotation))[9];
-                        $r->{updated} = datestr($mtime) . " (" . time_diff_str($mtime, $now) . ")";
-                        push @rotations2, $r;
-                    }
-                }
-                $rsize = human_readable($rsize);
-                $rinfo = " +$rcount $rsize";
-            }
         }
         my $vhost = $log->{vhost};
         print "$log->{file}\n";
         if ($log->{selected}) {
             print "    selected\n";
         }
-        print "    size $size$rinfo\n";
+        print "    size $size\n";
         if ($updated) {
             print "    updated $updated\n";
         }
@@ -525,22 +569,26 @@ sub detailed_list {
                 print "    absdocroot $vhost->{absdocroot}\n";
             }
         }
-        for my $r (@rotations2) {
-            print "    rotation $r->{name} $r->{size} $r->{updated}\n";
+        my $rotations = get_rotations($log->{file});
+        for my $r (@$rotations) {
+            my $size = human_readable(-s $r->{file});
+            my $mtime = (stat($r->{file}))[9];
+            my $updated = datestr($mtime) . " (" . time_diff_str($mtime, $now) . ")";
+            print "    rotation $r->{name} $size $updated\n";
         }
     }
 }
 
 sub human_readable {
     my ($size) = @_;
-    my @power = ("B", "K", "M", "G", "T", "P", "E", "Z", "Y");
+    my @power = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB");
     my $i = 0;
     my $abs_size = abs $size;
     for ($i = 0; $i < @power; $i++) {
         last if $abs_size < 1024;
         $abs_size /= 1024;
     }
-    my $str = sprintf("%.1f", $abs_size) . $power[$i];
+    my $str = sprintf("%.1f %s", $abs_size, $power[$i]);
     $str =~ s/\.0//;
     $str = "-$str" if $size < 0;
     return $str;
@@ -552,7 +600,7 @@ sub select_log {
         my $regexp = qr/^$name/;
         for my $log (@logs) {
             if ($log->{name} eq $name || $log->{file} eq $name || $log->{name} =~ $regexp) {
-                select_log_file($log);
+                select_log_rotation($log);
                 last;
             }
         }
@@ -560,7 +608,7 @@ sub select_log {
         # treat it as a filename.
         if (!$selected_log) {
             my $log = add_log($name);
-            select_log_file($log);
+            select_log_rotation($log);
         }
         return;
     }
@@ -593,11 +641,11 @@ sub select_log {
             return $b->{begcmp} <=> $a->{begcmp} || $a->{name} cmp $b->{name};
         } @logs;
 
-        select_log_file($logs_sorted[0]);
+        select_log_rotation($logs_sorted[0]);
     }
 }
 
-sub select_log_file {
+sub select_log_rotation {
     my ($log) = @_;
     $selected_log = $log;
     $log->{selected} = 1;
@@ -621,10 +669,13 @@ sub select_log_file {
         $pfile = "$file-$rot";
     }
     elsif ($rot =~ /^\d+$/) {
-        my @rotations = get_rotations($file);
-        $pfile = $rotations[$rot - 1];
+        my $rotations = get_rotations($file);
+        my $r = $rotations->[$rot - 1];
+        if ($r) {
+            $pfile = $r->{file};
+        }
     }
-    else {
+    if (!$pfile) {
         die "Unable to find log file.\n";
     }
     $log->{pfile} = $pfile;
@@ -658,18 +709,16 @@ sub process_log_list {
     my @logs_new;
     for my $log (@logs) {
         my $vhost = $log->{vhost};
-        if ($vhost) {
-            if ($vhost->{invalid}) {
-                next;
-            }
-            if ($host->{servroot} && $log->{file} !~ /^\//) {
-                $log->{file} = "$host->{servroot}/$log->{file}";
-            }
-            if ($logs{$log->{file}}) {
-                next;
-            }
-            $logs{$log->{file}} = $log;
+        if ($vhost && $vhost->{invalid}) {
+            next;
         }
+        if ($host->{servroot} && $log->{file} !~ /^\//) {
+            $log->{file} = "$host->{servroot}/$log->{file}";
+        }
+        if ($logs{$log->{file}}) {
+            next;
+        }
+        $logs{$log->{file}} = $log;
         push @logs_new, $log;
     }
     @logs = @logs_new;
@@ -792,7 +841,6 @@ sub vhost_name {
 
 sub get_opts {
     my @args;
-    $opts{action} = "less";
     while (my $arg = shift @ARGV) {
         if ($arg =~ /^--?$/) {
             push @args, @ARGV;
@@ -813,7 +861,9 @@ sub get_opts {
             $opts{offset} = $offset;
         }
         elsif ($arg eq "-f") {
-            $opts{action} = "tailf";
+            my $filter = shift @ARGV;
+            $opts{filter} = $filter;
+            $opts{action} ||= "verbose";
         }
         elsif ($arg eq "-g") {
             $opts{action} = "graph";
@@ -840,6 +890,9 @@ sub get_opts {
         elsif ($arg eq "-i") {
             $opts{action} = "info";
         }
+        elsif ($arg eq "-v") {
+            $opts{action} = "verbose";
+        }
         elsif ($arg eq "-l") {
             $opts{action} = "list";
         }
@@ -852,9 +905,6 @@ sub get_opts {
         elsif ($arg eq "-r") {
             $opts{rotation} = shift @ARGV;
         }
-        elsif ($arg eq "-v") {
-            $opts{action} = "vim";
-        }
         elsif ($arg =~ /^-/) {
             die "Invalid argument '$arg'\n";
         }
@@ -866,23 +916,24 @@ sub get_opts {
         die "Too many arguments\n";
     }
     $opts{name} = shift @args;
+    $opts{action} ||= "less";
 }
 
 sub usage {
     print <<EOUSAGE;
 Usage: elog [<options>] [<name>]
 
--f                tail -f the log
+-f <regex>        filter based on regex
 -g [<interval>]   graph errors
 -h                displays this help text
--i                show each error on a line by itself
+-i                show info and statistics
 -l                list available logs
 -L                list available logs with details
 -m <n>            process a maximum of n errors, starting from the end
 -o <n>            process errors starting at an offset from the end
 -p                print log path
 -r <n>            rotation number
--v                vim the log
+-v                verbosely show each error
 
 <name>            name of the log you are trying to access (regexp),
                   if name contains a "/", name is treated as a file name,
@@ -905,17 +956,17 @@ elog - An Apache error log viewer
 
 =head1 OPTIONS
 
-    -f                tail -f the log
+    -f <regex>        filter based on regex
     -g [<interval>]   graph errors
     -h                displays this help text
-    -i                show each error on a line by itself
+    -i                show info and statistics
     -l                list available logs
     -L                list available logs with details
     -m <n>            process a maximum of n errors, starting from the end
     -o <n>            process errors starting at an offset from the end
     -p                print log path
     -r <n>            rotation number
-    -v                vim the log
+    -v                verbosely show each error
 
     <name>            name of the log you are trying to access (regexp),
                       if name contains a "/", name is treated as a file name,
@@ -954,18 +1005,16 @@ that error log is for.
 
 The -p option will show the path the selected error log file.
 
-The -f option will open the log in `tail -f`.
+The -f option will filter based on a given regex for the -v or -g option.
 
-The -v option will open the log in `vim`.
+The -v option will verbosely show each error on a line by itself with
+extra info (time, ip, etc) on the line before.
 
-The -i option will show each error on a line by itself with extra info
-(time, ip, etc) on the line before.
+The -m option limits the maximum number of errors shown with the -v
+option or the -g option, starting from the end of the log (most recent).
 
-The -m option limits the maximum number of errors shown with the -i
-option, starting from the end of the log (most recent).
-
-The -o option sets an offset to the errors shown with the -i option, so
-"elog -i -m 1" shows the last error, "elog -i -m 1 -o 1" shows the second
+The -o option sets an offset to the errors shown with the -v option, so
+"elog -v -m 1" shows the last error, "elog -v -m 1 -o 1" shows the second
 to last error.
 
 The -g option will show a graph of the number of errors in hourly intervals. If provided an argument, it can be h for hourly, d for daily, or a number of seconds.
