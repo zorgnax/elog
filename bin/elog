@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Cwd ();
 use POSIX ();
-use Data::Dumper;
+# TODO go with regex not regexp
 
 my %opts;
 my @logs;
@@ -870,6 +870,9 @@ sub get_opts {
             my $interval = $ARGV[0];
             if (defined $interval && $interval !~ /^-/) {
                 shift @ARGV;
+            }
+            else {
+                $interval = undef;
             }
             if (!$interval || $interval eq "h") {
                 $opts{interval} = 60 * 60;

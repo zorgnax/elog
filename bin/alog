@@ -4,6 +4,8 @@ use strict;
 use warnings;
 use Cwd ();
 use POSIX ();
+use Data::Dumper;
+$Data::Dumper::Sortkeys = 1;
 
 my %opts;
 my @logs;
@@ -304,11 +306,7 @@ sub show_info {
 
 sub process_access_for_info {
     my ($a, $info) = @_;
-    if ($line_count == 1) {
-        $info->{mintime} = $a->{reqtime};
-        $info->{maxtime} = $a->{reqtime};
-    }
-    $info->{count} = $line_count;
+    $info->{count}++;
     if (!$info->{from}) {
         $info->{from} = $a->{date};
     }
@@ -323,6 +321,11 @@ sub process_access_for_info {
     $info->{ips}{$a->{ip}}++;
     $info->{types}{$a->{type}}++;
     if ($a->{reqtime}) {
+        if (!$info->{initmintime}) {
+            $info->{mintime} = $a->{reqtime};
+            $info->{maxtime} = $a->{reqtime};
+            $info->{initmintime} = 1;
+        }
         if ($a->{reqtime} < $info->{mintime}) {
             $info->{mintime} = $a->{reqtime};
         }
@@ -382,127 +385,133 @@ sub parse_access_line {
 
 sub parse_access_line_format {
     my ($line, $log) = @_;
-    if (!$log->{regexp}) {
-        parse_log_format($log);
+    if ($line =~ /^\s*$/) {
+        return undef;
     }
     my $a = {};
-    my @captures = $line =~ $log->{regexp};
-    if (!@captures) {
-        return $a;
-    }
-    for my $i (0 .. $#captures) {
-        my $c = $captures[$i];
-        my $f = $log->{cformats}[$i];
-        if ($f->{letter} eq "a") {
-            $a->{ip} = $c;
+    my $captures = $log->{captures};
+    for my $c (@$captures) {
+        my $regexp = $c->{regexp};
+        my $letter = $c->{letter};
+        if ($line !~ /\G$regexp/gc) {
+            # The log entry doesnt match the format, however some of it might have
+            # matched, so we can use that.
+            last;
         }
-        elsif ($f->{letter} eq "A") {
-            $a->{local_ip} = $c;
+        my $value = $1;
+        if (!$letter) {
+            # we only matched text, nothing to capture
         }
-        elsif ($f->{letter} eq "B") {
-            $a->{bytes} = $c;
+        elsif ($letter eq "a") {
+            $a->{ip} = $value;
         }
-        elsif ($f->{letter} eq "D") {
-            $a->{reqtime} = $c;
+        elsif ($letter eq "A") {
+            $a->{local_ip} = $value;
         }
-        elsif ($f->{letter} eq "e") {
-            my $name = lc $f->{curly};
+        elsif ($letter eq "B") {
+            $a->{bytes} = $value;
+        }
+        elsif ($letter eq "D") {
+            $a->{reqtime} = $value;
+        }
+        elsif ($letter eq "e") {
+            my $name = lc $c->{curly};
             $name =~ s/-/_/g;
-            $a->{$name} = $c;
+            $a->{$name} = $value;
         }
-        elsif ($f->{letter} eq "f") {
-            $a->{file} = $c;
+        elsif ($letter eq "f") {
+            $a->{file} = $value;
         }
-        elsif ($f->{letter} eq "h") {
-            $a->{host} = $c;
+        elsif ($letter eq "h") {
+            $a->{host} = $value;
             if (!$a->{ip}) {
                 $a->{ip} = $a->{host};
             }
         }
-        elsif ($f->{letter} eq "i") {
-            my $name = lc $f->{curly};
+        elsif ($letter eq "i") {
+            my $name = lc $c->{curly};
             $name =~ s/-/_/g;
-            $a->{$name} = $c;
+            $a->{$name} = $value;
         }
-        elsif ($f->{letter} eq "I") {
-            $a->{req_bytes} = $c;
+        elsif ($letter eq "I") {
+            $a->{req_bytes} = $value;
         }
-        elsif ($f->{letter} eq "k") {
-            $a->{keepalives} = $c;
+        elsif ($letter eq "k") {
+            $a->{keepalives} = $value;
         }
-        elsif ($f->{letter} eq "l") {
-            $a->{ident} = $c;
+        elsif ($letter eq "l") {
+            $a->{ident} = $value;
         }
-        elsif ($f->{letter} eq "L") {
-            $a->{errid} = $c;
+        elsif ($letter eq "L") {
+            $a->{errid} = $value;
         }
-        elsif ($f->{letter} eq "m") {
-            $a->{method} = $c;
+        elsif ($letter eq "m") {
+            $a->{method} = $value;
         }
-        elsif ($f->{letter} eq "O") {
+        elsif ($letter eq "O") {
             # bytes with headers
-            $a->{byteswh} = $c;
+            $a->{byteswh} = $value;
         }
-        elsif ($f->{letter} eq "p") {
-            if ($f->{curly} && $f->{curly} eq "local") {
-                $a->{local_port} = $c;
+        elsif ($letter eq "p") {
+            if ($c->{curly} && $c->{curly} eq "local") {
+                $a->{local_port} = $value;
             }
-            elsif ($f->{curly} && $f->{curly} eq "remote") {
-                $a->{remote_port} = $c;
+            elsif ($c->{curly} && $c->{curly} eq "remote") {
+                $a->{remote_port} = $value;
             }
         }
-        elsif ($f->{letter} eq "P") {
-            if ($f->{curly} && $f->{curly} eq "tid") {
-                $a->{tid} = $c;
+        elsif ($letter eq "P") {
+            if ($c->{curly} && $c->{curly} eq "tid") {
+                $a->{tid} = $value;
             }
             else {
-                $a->{pid} = $c;
+                $a->{pid} = $value;
             }
         }
-        elsif ($f->{letter} eq "q") {
-            $a->{query} = $c;
+        elsif ($letter eq "q") {
+            $a->{query} = $value;
         }
-        elsif ($f->{letter} eq "r") {
-            $a->{request} = $c;
+        elsif ($letter eq "r") {
+            $a->{request} = $value;
         }
-        elsif ($f->{letter} eq "R") {
-            $a->{handler} = $c;
+        elsif ($letter eq "R") {
+            $a->{handler} = $value;
         }
-        elsif ($f->{letter} eq "s") {
-            if ($f->{angle} && $f->{angle} eq ">") {
-                $a->{final_status} = $c;
+        elsif ($letter eq "s") {
+            if ($c->{angle} && $c->{angle} eq ">") {
+                $a->{final_status} = $value;
                 if (!$a->{status}) {
-                    $a->{status} = $c;
+                    $a->{status} = $value;
                 }
             }
             else {
-                $a->{status} = $c;
+                $a->{status} = $value;
             }
         }
-        elsif ($f->{letter} eq "t") {
-            if ($c =~ /^\[([^]]*)\]/) {
+        elsif ($letter eq "t") {
+            if ($value =~ /^\[([^]]*)\]/) {
                 $a->{datestr} = $1;
             }
             else {
-                $a->{datestr} = $c;
+                $a->{datestr} = $value;
             }
         }
-        elsif ($f->{letter} eq "u") {
-            $a->{user} = $c;
+        elsif ($letter eq "u") {
+            $a->{user} = $value;
         }
-        elsif ($f->{letter} eq "U") {
-            if ($f->{angle} && $f->{angle} eq ">") {
-                $a->{url_final} = $c;
+        elsif ($letter eq "U") {
+            if ($c->{angle} && $c->{angle} eq ">") {
+                $a->{url_final} = $value;
             }
             else {
-                $a->{url} = $c;
+                $a->{url} = $value;
             }
         }
-        elsif ($f->{letter} eq "v") {
-            $a->{vhost} = $c;
+        elsif ($letter eq "v") {
+            $a->{vhost} = $value;
         }
-        elsif ($f->{letter} eq "V") {
-            $a->{server_name} = $c;
+        elsif ($letter eq "V") {
+            $a->{server_name} = $value;
         }
     }
     process_access($a);
@@ -511,48 +520,55 @@ sub parse_access_line_format {
 
 sub parse_log_format {
     my ($log) = @_;
-    $log->{regexp} = "^";
+    my @captures;
+    my $prev;
     while (1) {
-        if ($log->{format} =~ /\G([^%\\]+)/gc) {
-            $log->{regexp} .= quotemeta($1);
+        my $c = {};
+        if ($log->{format} =~ /\G\s+/gc) {
+            $c->{regexp} = qr{\s+};
+            $c->{whitespace} = 1;
+        }
+        elsif ($log->{format} =~ /\G([^%\\\s]+)/gc) {
+            $c->{regexp} = quotemeta($1);
         }
         elsif ($log->{format} =~ /\G\\t/gc) {
-            $log->{regexp} .= "\\s";
+            $c->{regexp} = qr{\s+};
+            $c->{whitespace} = 1;
         }
         elsif ($log->{format} =~ /\G%t/gc) {
-            my $c = {};
             $c->{letter} = "t";
-            $log->{regexp} .= "\\[([^\\]]*)\\]";
-            push @{$log->{cformats}}, $c;
+            $c->{regexp} = qr{\[([^\]]*)\]};
         }
         elsif ($log->{format} =~ /\G%r/gc) {
-            my $c = {};
             $c->{letter} ="r";
-            if ($log->{regexp} && $log->{regexp} =~ /"$/) {
-                $log->{regexp} .= "((?:\\\\?.)*?)";
+            if ($prev && $prev->{regexp} =~ /"$/) {
+                $c->{regexp} = qr{((?:[^"]*|\\")*)};
             }
             else {
-                $log->{regexp} .= "(\\S*)";
+                $c->{regexp} = qr{(\S*)};
             }
-            push @{$log->{cformats}}, $c;
         }
         elsif ($log->{format} =~ /\G%(\{([^\}]*)\}|([<>]))?(\w)/gc) {
-            my $c = {};
             $c->{curly} = $2;
             $c->{angle} = $3;
             $c->{letter} = $4;
-            if ($log->{regexp} && $log->{regexp} =~ /"$/) {
-                $log->{regexp} .= "((?:[^\"]*|\\\")*)";
+            if ($prev && $prev->{regexp} =~ /"$/) {
+                $c->{regexp} = qr{((?:[^"]*|\\")*)};
             }
             else {
-                $log->{regexp} .= "(\\S*)";
+                $c->{regexp} = qr{(\S*)};
             }
-            push @{$log->{cformats}}, $c;
         }
         else {
             last;
         }
+        if ($prev && $prev->{whitespace} && $c->{whitespace}) {
+            next;
+        }
+        push @captures, $c;
+        $prev = $c;
     }
+    $log->{captures} = \@captures;
 }
 
 sub parse_access_line_default {
@@ -582,7 +598,8 @@ sub process_access {
     delete $a->{ident} if $a->{ident} && $a->{ident} eq "-";
     delete $a->{user} if $a->{user} && $a->{user} eq "-";
     $a->{bytes} = 0 if $a->{bytes} && $a->{bytes} eq "-";
-    delete $a->{referer} if $a->{referer} eq "-";
+    delete $a->{referer} if $a->{referer} && $a->{referer} eq "-";
+    $a->{request} ||= "";
     if ($a->{request} =~ /^ (\S+) \s+ (\S+) \s+ (\S+) $/x) {
         $a->{method} = $1;
         $a->{uri} = $2;
@@ -818,6 +835,9 @@ sub loop_accesses {
         $filter = qr{$filter}i;
     }
     $line_count = 0;
+    if ($selected_log->{format} && !$selected_log->{captures}) {
+        parse_log_format($selected_log);
+    }
 
     while (my $line = <$fh>) {
         if ($filter && $line !~ $filter) {
@@ -826,8 +846,9 @@ sub loop_accesses {
         $line_count++;
         chomp $line;
         my $a = parse_access_line($line, $selected_log);
-        if (!$a) {
-            die "Couldn't parse: $line\n";
+        if (!$a || !$a->{date}) {
+            # couldn't parse the line
+            next;
         }
         $func->($a, $arg);
     }
@@ -1227,6 +1248,9 @@ sub get_opts {
             my $interval = $ARGV[0];
             if (defined $interval && $interval !~ /^-/) {
                 shift @ARGV;
+            }
+            else {
+                $interval = undef;
             }
             if (!$interval || $interval eq "h") {
                 $opts{interval} = 60 * 60;
