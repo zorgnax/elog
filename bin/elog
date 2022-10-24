@@ -28,11 +28,11 @@ if ($opts{action} eq "list") {
 elsif ($opts{action} eq "detailed_list") {
     show_detailed_list();
 }
-elsif ($opts{action} eq "verbose") {
-    show_verbose();
-}
 elsif ($opts{action} eq "info") {
     show_info();
+}
+elsif ($opts{action} eq "stats") {
+    show_stats();
 }
 elsif ($opts{action} eq "graph") {
     show_graph();
@@ -52,9 +52,9 @@ else {
     }
 }
 
-sub show_info {
-    my $info = {};
-    loop_errors(\&process_error_for_info, $info);
+sub show_stats {
+    my $stats = {};
+    loop_errors(\&process_error_for_stats, $stats);
 
     my $file = $selected_log->{pfile};
     my $size = -s $file;
@@ -62,12 +62,12 @@ sub show_info {
     print "$file\n";
     print "size $size\n";
 
-    my $count = $info->{errors} || 0;
+    my $count = $stats->{errors} || 0;
     print "$count errors in $line_count lines\n";
 
-    my $from = $info->{from};
+    my $from = $stats->{from};
     my $fromstr = datestr($from);
-    my $to = $info->{to};
+    my $to = $stats->{to};
     my $tostr = datestr($to);
     my $time_diff = time_diff_str2($from, $to);
     if ($time_diff) {
@@ -76,13 +76,13 @@ sub show_info {
     print "from [$fromstr] to [$tostr]\n";
 }
 
-sub process_error_for_info {
-    my ($e, $info) = @_;
-    $info->{errors}++;
-    if (!$info->{from}) {
-        $info->{from} = $e->{date};
+sub process_error_for_stats {
+    my ($e, $stats) = @_;
+    $stats->{errors}++;
+    if (!$stats->{from}) {
+        $stats->{from} = $e->{date};
     }
-    $info->{to} = $e->{date};
+    $stats->{to} = $e->{date};
 }
 
 sub show_graph {
@@ -215,8 +215,8 @@ sub natural_sort {
     return \@array3;
 }
 
-sub show_verbose {
-    loop_errors(\&show_error);
+sub show_info {
+    loop_errors(\&show_error_info);
 }
 
 sub loop_errors {
@@ -282,7 +282,7 @@ sub loop_errors {
     close $fh;
 }
 
-sub show_error {
+sub show_error_info {
     my ($e) = @_;
     my $datestr = datestr($e->{date}) || "Unknown time";
     my $line = "[$datestr]";
@@ -863,7 +863,7 @@ sub get_opts {
         elsif ($arg eq "-f") {
             my $filter = shift @ARGV;
             $opts{filter} = $filter;
-            $opts{action} ||= "verbose";
+            $opts{action} ||= "info";
         }
         elsif ($arg eq "-g") {
             $opts{action} = "graph";
@@ -890,11 +890,11 @@ sub get_opts {
         elsif ($arg =~ /^(--?help|-h)$/) {
             usage();
         }
+        elsif ($arg eq "-s") {
+            $opts{action} = "stats";
+        }
         elsif ($arg eq "-i") {
             $opts{action} = "info";
-        }
-        elsif ($arg eq "-v") {
-            $opts{action} = "verbose";
         }
         elsif ($arg eq "-l") {
             $opts{action} = "list";
@@ -928,15 +928,15 @@ Usage: elog [<options>] [<name>]
 
 -f <regexp>       filter based on regexp
 -g [<interval>]   graph errors
--h                displays this help text
--i                show info and statistics
+-h                show this help text
+-i                show info spread vertically
 -l                list available logs
 -L                list available logs with details
 -m <n>            process a maximum of n errors, starting from the end
 -o <n>            process errors starting at an offset from the end
 -p                print log path
 -r <n>            rotation number
--v                verbosely show each error
+-s                show statistics
 
 <name>            name of the log you are trying to access (regexp),
                   if name contains a "/", name is treated as a file name,
@@ -961,15 +961,15 @@ elog - An Apache error log viewer
 
     -f <regexp>       filter based on regexp
     -g [<interval>]   graph errors
-    -h                displays this help text
-    -i                show info and statistics
+    -h                show this help text
+    -i                show info spread vertically
     -l                list available logs
     -L                list available logs with details
     -m <n>            process a maximum of n errors, starting from the end
     -o <n>            process errors starting at an offset from the end
     -p                print log path
     -r <n>            rotation number
-    -v                verbosely show each error
+    -s                show statistics
 
     <name>            name of the log you are trying to access (regexp),
                       if name contains a "/", name is treated as a file name,
@@ -1008,16 +1008,19 @@ that error log is for.
 
 The -p option will show the path the selected error log file.
 
-The -f option will filter based on a given regexp for the -v or -g option.
+The -f option will filter based on a given regexp for the -i, -s, or -g option.
 
-The -v option will verbosely show each error on a line by itself with
-extra info (time, ip, etc) on the line before.
+The -s option will show statistics about the error log file such
+as how many errors there were, and their time frame.
 
-The -m option limits the maximum number of errors shown with the -v
-option or the -g option, starting from the end of the log (most recent).
+The -i option will show each error on a line by itself with extra info (time, ip,
+etc) on the line before.
 
-The -o option sets an offset to the errors shown with the -v option, so
-"elog -v -m 1" shows the last error, "elog -v -m 1 -o 1" shows the second
+The -m option limits the maximum number of errors shown with the -i, -s, or
+the -g option, starting from the end of the log (most recent).
+
+The -o option sets an offset to the errors shown with the -i option, so
+"elog -i -m 1" shows the last error, "elog -i -m 1 -o 1" shows the second
 to last error.
 
 The -g option will show a graph of the number of errors in hourly intervals. If provided an argument, it can be h for hourly, d for daily, or a number of seconds.

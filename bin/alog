@@ -4,10 +4,6 @@ use strict;
 use warnings;
 use Cwd ();
 use POSIX ();
-use Data::Dumper;
-$Data::Dumper::Sortkeys = 1;
-# TODO -i becomes -s not info but stats
-# TODO -v becomes -i not verbose but info, and -V becomes -I
 
 my %opts;
 my @logs;
@@ -31,11 +27,11 @@ if ($opts{action} eq "list") {
 elsif ($opts{action} eq "detailed_list") {
     show_detailed_list();
 }
-elsif ($opts{action} eq "verbose") {
-    show_verbose();
-}
 elsif ($opts{action} eq "info") {
     show_info();
+}
+elsif ($opts{action} eq "stats") {
+    show_stats();
 }
 elsif ($opts{action} eq "graph") {
     show_graph();
@@ -207,21 +203,21 @@ sub show_graph_entry {
     print "$bar2\n";
 }
 
-sub show_info {
-    my $info = {};
-    loop_accesses(\&process_access_for_info, $info);
+sub show_stats {
+    my $stats = {};
+    loop_accesses(\&process_access_for_stats, $stats);
 
     my $file = $selected_log->{pfile};
     my $size = -s $file;
     $size = human_readable($size);
     print "$file\n";
     print "size $size\n";
-    my $count = $info->{count} || 0;
+    my $count = $stats->{count} || 0;
     print "$count requests\n";
 
-    my $from = $info->{from};
+    my $from = $stats->{from};
     my $fromstr = datestr($from);
-    my $to = $info->{to};
+    my $to = $stats->{to};
     my $tostr = datestr($to);
     my $time_diff = time_diff_str2($from, $to);
     if ($time_diff) {
@@ -229,60 +225,60 @@ sub show_info {
     }
 
     print "from [$fromstr] to [$tostr]\n";
-    if (defined $info->{bytes}) {
-        my $bytes = human_readable($info->{bytes});
+    if (defined $stats->{bytes}) {
+        my $bytes = human_readable($stats->{bytes});
         print "total response size $bytes\n";
     }
-    if ($info->{mintime}) {
-        my $mintime = int($info->{mintime} / 1000);
+    if ($stats->{mintime}) {
+        my $mintime = int($stats->{mintime} / 1000);
         print "min serving time $mintime ms\n";
     }
-    if ($info->{maxtime}) {
-        my $maxtime = int($info->{maxtime} / 1000);
+    if ($stats->{maxtime}) {
+        my $maxtime = int($stats->{maxtime} / 1000);
         print "max serving time $maxtime ms\n";
     }
-    if ($info->{sumtime}) {
-        $info->{avgtime} = $info->{sumtime} / $info->{count};
-        $info->{stddevtime} = sqrt(($info->{sumtime2} - (($info->{sumtime} ** 2) / $info->{count})) / $info->{count});
-        my $avgtime = int($info->{avgtime} / 1000);
-        my $stddevtime = int($info->{stddevtime} / 1000);
+    if ($stats->{sumtime}) {
+        $stats->{avgtime} = $stats->{sumtime} / $stats->{count};
+        $stats->{stddevtime} = sqrt(($stats->{sumtime2} - (($stats->{sumtime} ** 2) / $stats->{count})) / $stats->{count});
+        my $avgtime = int($stats->{avgtime} / 1000);
+        my $stddevtime = int($stats->{stddevtime} / 1000);
         print "average serving time $avgtime ms ± $stddevtime ms\n";
     }
     print "\n";
 
     my @methods = sort {
-        $info->{methods}{$b} <=> $info->{methods}{$a}
-    } keys %{$info->{methods}};
+        $stats->{methods}{$b} <=> $stats->{methods}{$a}
+    } keys %{$stats->{methods}};
     print "methods:\n";
-    print join " ", map "$info->{methods}{$_} $_", @methods;
+    print join " ", map "$stats->{methods}{$_} $_", @methods;
     print "\n\n";
 
     my @status = sort {
-        $info->{status}{$b} <=> $info->{status}{$a}
-    } keys %{$info->{status}};
+        $stats->{status}{$b} <=> $stats->{status}{$a}
+    } keys %{$stats->{status}};
     print "status:\n";
-    print join " ", map "$info->{status}{$_} $_", @status;
+    print join " ", map "$stats->{status}{$_} $_", @status;
     print "\n\n";
 
-    my $locations = scalar(keys %{$info->{locations}});
+    my $locations = scalar(keys %{$stats->{locations}});
     my @locations = sort {
-        $info->{locations}{$b} <=> $info->{locations}{$a}
-    } keys %{$info->{locations}};
+        $stats->{locations}{$b} <=> $stats->{locations}{$a}
+    } keys %{$stats->{locations}};
     @locations = splice @locations, 0, 5;
     print "most requested locations (of $locations):\n";
     for my $loc (@locations) {
-        my $count = $info->{locations}{$loc};
+        my $count = $stats->{locations}{$loc};
         print "$count $loc\n";
     }
     print "\n";
 
     @locations = sort {
-        $info->{lreqtimes}{$b} <=> $info->{lreqtimes}{$a}
-    } keys %{$info->{lreqtimes}};
+        $stats->{lreqtimes}{$b} <=> $stats->{lreqtimes}{$a}
+    } keys %{$stats->{lreqtimes}};
     @locations = splice @locations, 0, 5;
     print "slowest request locations (in seconds):\n";
     for my $loc (@locations) {
-        my $time = $info->{lreqtimes}{$loc};
+        my $time = $stats->{lreqtimes}{$loc};
         $time = $time / (1000 * 1000);
         $time = sprintf "%.1f", $time;
         print "$time $loc\n";
@@ -290,55 +286,55 @@ sub show_info {
     print "\n";
 
     my @types = sort {
-        $info->{types}{$b} <=> $info->{types}{$a}
-    } keys %{$info->{types}};
+        $stats->{types}{$b} <=> $stats->{types}{$a}
+    } keys %{$stats->{types}};
     print "types:\n";
-    print join " ", map "$info->{types}{$_} $_", @types;
+    print join " ", map "$stats->{types}{$_} $_", @types;
     print "\n\n";
 
-    my $ips = scalar(keys %{$info->{ips}});
+    my $ips = scalar(keys %{$stats->{ips}});
     my @ips = sort {
-        $info->{ips}{$b} <=> $info->{ips}{$a}
-    } keys %{$info->{ips}};
+        $stats->{ips}{$b} <=> $stats->{ips}{$a}
+    } keys %{$stats->{ips}};
     @ips = splice @ips, 0, 5;
     print "most active ips (of $ips):\n";
-    print join " ", map "$info->{ips}{$_} $_", @ips;
+    print join " ", map "$stats->{ips}{$_} $_", @ips;
     print "\n";
 }
 
-sub process_access_for_info {
-    my ($a, $info) = @_;
-    $info->{count}++;
-    if (!$info->{from}) {
-        $info->{from} = $a->{date};
+sub process_access_for_stats {
+    my ($a, $stats) = @_;
+    $stats->{count}++;
+    if (!$stats->{from}) {
+        $stats->{from} = $a->{date};
     }
     my $loc = process_location($a->{loc});
-    $info->{to} = $a->{date};
-    $info->{locations}{$loc}++;
-    $info->{methods}{$a->{method}}++;
-    $info->{status}{$a->{status}}++;
+    $stats->{to} = $a->{date};
+    $stats->{locations}{$loc}++;
+    $stats->{methods}{$a->{method}}++;
+    $stats->{status}{$a->{status}}++;
     if (defined $a->{bytes}) {
-        $info->{bytes} += $a->{bytes};
+        $stats->{bytes} += $a->{bytes};
     }
-    $info->{ips}{$a->{ip}}++;
-    $info->{types}{$a->{type}}++;
+    $stats->{ips}{$a->{ip}}++;
+    $stats->{types}{$a->{type}}++;
     if ($a->{reqtime}) {
-        if (!$info->{initmintime}) {
-            $info->{mintime} = $a->{reqtime};
-            $info->{maxtime} = $a->{reqtime};
-            $info->{initmintime} = 1;
+        if (!$stats->{initmintime}) {
+            $stats->{mintime} = $a->{reqtime};
+            $stats->{maxtime} = $a->{reqtime};
+            $stats->{initmintime} = 1;
         }
-        if ($a->{reqtime} < $info->{mintime}) {
-            $info->{mintime} = $a->{reqtime};
+        if ($a->{reqtime} < $stats->{mintime}) {
+            $stats->{mintime} = $a->{reqtime};
         }
-        if ($a->{reqtime} > $info->{maxtime}) {
-            $info->{maxtime} = $a->{reqtime};
+        if ($a->{reqtime} > $stats->{maxtime}) {
+            $stats->{maxtime} = $a->{reqtime};
         }
-        $info->{sumtime} += $a->{reqtime};
-        $info->{sumtime2} += $a->{reqtime} ** 2;
-        my $lreqtime = $info->{lreqtimes}{$loc};
+        $stats->{sumtime} += $a->{reqtime};
+        $stats->{sumtime2} += $a->{reqtime} ** 2;
+        my $lreqtime = $stats->{lreqtimes}{$loc};
         if (!$lreqtime || $lreqtime < $a->{reqtime}) {
-            $info->{lreqtimes}{$loc} = $a->{reqtime};
+            $stats->{lreqtimes}{$loc} = $a->{reqtime};
         }
     }
 }
@@ -800,14 +796,14 @@ sub time_diff_obj {
     return \%obj;
 }
 
-sub show_verbose {
-    loop_accesses(\&show_verbose_access);
+sub show_info {
+    loop_accesses(\&show_access_info);
 }
 
-sub show_verbose_access {
+sub show_access_info {
     my ($a) = @_;
     print "[$a->{datestr}] from IP $a->{ip}:\n";
-    if ($opts{very}) {
+    if ($opts{verbose}) {
         delete $a->{datestr};
         delete $a->{date};
         delete $a->{ip};
@@ -1276,7 +1272,7 @@ sub get_opts {
         elsif ($arg eq "-f") {
             my $filter = shift @ARGV;
             $opts{filter} = $filter;
-            $opts{action} ||= "verbose";
+            $opts{action} ||= "info";
         }
         elsif ($arg eq "-g") {
             $opts{action} = "graph";
@@ -1303,15 +1299,15 @@ sub get_opts {
         elsif ($arg =~ /^(--?help|-h)$/) {
             usage();
         }
+        elsif ($arg eq "-s") {
+            $opts{action} = "stats";
+        }
         elsif ($arg eq "-i") {
             $opts{action} = "info";
         }
-        elsif ($arg eq "-v") {
-            $opts{action} = "verbose";
-        }
-        elsif ($arg eq "-V") {
-            $opts{action} = "verbose";
-            $opts{very} = 1;
+        elsif ($arg eq "-I") {
+            $opts{action} = "info";
+            $opts{verbose} = 1;
         }
         elsif ($arg eq "-l") {
             $opts{action} = "list";
@@ -1345,16 +1341,16 @@ Usage: alog [<options>] [<name>]
 
 -f <regexp>       filter based on regexp
 -g [<interval>]   graph errors
--h                displays this help text
--i                show info and statistics
+-h                show this help text
+-i                show info spread vertically
+-I                show info verbosely
 -l                list available logs
 -L                list available logs with details
 -m <n>            process a maximum of n accesses, starting from the end
 -o <n>            process accesses starting at an offset from the end
 -p                print log path
 -r <n>            rotation number
--v                verbosely show each access
--V                very verbosely show each access
+-s                show statistics
 
 <name>            name of the log you are trying to access (regexp),
                   if name contains a "/", name is treated as a file name,
@@ -1379,16 +1375,16 @@ alog - An Apache access log viewer
 
     -f <regexp>       filter based on regexp
     -g [<interval>]   graph errors
-    -h                displays this help text
-    -i                show info and statistics
+    -h                show this help text
+    -i                show info spread vertically
+    -I                show info verbosely
     -l                list available logs
     -L                list available logs with details
     -m <n>            process a maximum of n accesses, starting from the end
     -o <n>            process accesses starting at an offset from the end
     -p                print log path
     -r <n>            rotation number
-    -v                verbosely show each access
-    -V                very verbosely show each access
+    -s                show statistics
 
     <name>            name of the log you are trying to access (regexp),
                       if name contains a "/", name is treated as a file name,
@@ -1430,24 +1426,24 @@ access log uses.
 
 The -p option will show the path the selected access log file.
 
-The -f option will filter based on a given regexp for the -v or -g option.
+The -f option will filter based on a given regexp for the -i, -s, or -g option.
 
-The -i option will show statistics about the access log file such
+The -s option will show statistics about the access log file such
 as how many requests there were, their time frame, and most active
 URIs.
 
-The -v option will show the data fields of the access log entry on
+The -i option will show the data fields of the access log entry on
 their own line, so you don't have to scroll right to see the part
 you are interested in.
 
-The -V option will show all the fields we have for the entry on it's
+The -I option will show all the fields we have for the entry on it's
 own line.
 
-The -m option limits the maximum number of accesses shown with the -v
-option or the -g option, starting from the end of the log (most recent).
+The -m option limits the maximum number of accesses shown with the -i, -s, or the
+-g option, starting from the end of the log (most recent).
 
-The -o option sets an offset to the accesses shown with the -v option, so
-"elog -v -m 1" shows the last access, "elog -v -m 1 -o 1" shows the second
+The -o option sets an offset to the accesses shown with the -i option, so
+"elog -i -m 1" shows the last access, "elog -i -m 1 -o 1" shows the second
 to last access.
 
 The -g option will show a graph of the number of accesses in hourly

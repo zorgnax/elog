@@ -20,16 +20,16 @@ alog - An Apache access log viewer
 
     -f <regexp>       filter based on regexp
     -g [<interval>]   graph errors
-    -h                displays this help text
-    -i                show info and statistics
+    -h                show this help text
+    -i                show info spread vertically
+    -I                show info verbosely
     -l                list available logs
     -L                list available logs with details
     -m <n>            process a maximum of n accesses, starting from the end
     -o <n>            process accesses starting at an offset from the end
     -p                print log path
     -r <n>            rotation number
-    -v                verbosely show each access
-    -V                very verbosely show each access
+    -s                show statistics
 
     <name>            name of the log you are trying to access (regexp),
                       if name contains a "/", name is treated as a file name,
@@ -71,24 +71,24 @@ access log uses.
 
 The -p option will show the path the selected access log file.
 
-The -f option will filter based on a given regexp for the -v or -g option.
+The -f option will filter based on a given regexp for the -i, -s, or -g option.
 
-The -i option will show statistics about the access log file such
+The -s option will show statistics about the access log file such
 as how many requests there were, their time frame, and most active
 URIs.
 
-The -v option will show the data fields of the access log entry on
+The -i option will show the data fields of the access log entry on
 their own line, so you don't have to scroll right to see the part
 you are interested in.
 
-The -V option will show all the fields we have for the entry on it's
+The -I option will show all the fields we have for the entry on it's
 own line.
 
-The -m option limits the maximum number of accesses shown with the -v
-option or the -g option, starting from the end of the log (most recent).
+The -m option limits the maximum number of accesses shown with the -i, -s, or the
+-g option, starting from the end of the log (most recent).
 
-The -o option sets an offset to the accesses shown with the -v option, so
-"elog -v -m 1" shows the last access, "elog -v -m 1 -o 1" shows the second
+The -o option sets an offset to the accesses shown with the -i option, so
+"elog -i -m 1" shows the last access, "elog -i -m 1 -o 1" shows the second
 to last access.
 
 The -g option will show a graph of the number of accesses in hourly

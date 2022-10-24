@@ -8,10 +8,7 @@ Revision history for App::Elog
     - Changed from using the PWD env var to Cwd::cwd() because sudo
       wasn't setting the PWD env var.
 
-    - Changed -i to -v so instead of it meaning info it means verbose. -v
-      shows each error log or access log entry verbosely with info spready
-      vertically, not everything on one line. -i is used for info and
-      statistics.
+    - Changed options to be -i for info and -s for statistics.
 
     - Changed -a to -m for max records. And to have it show records you
       use -v along with it.
@@ -34,7 +31,7 @@ Revision history for App::Elog
     - Make sure there's space between the number and it's unit and
       between the time and the AM/PM.
 
-    - Show slowest locations in alog -i.
+    - Show slowest locations in alog -s.
 
     - Do not show rotation count and combined size in -l or -L output.
 
@@ -46,7 +43,7 @@ Revision history for App::Elog
     - Added an offset option -o, so you can limit to the most recent x
       errors but at an offset line number into the file.
 
-    - Added elog -i option to show info and statistics about the log.
+    - Added elog -s option to show info and statistics about the log.
 
     - When you don't have a format string for a log, either use key value pairs in the
       log line itself, or a default format string depending on the content of the

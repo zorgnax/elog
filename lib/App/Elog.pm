@@ -22,15 +22,15 @@ elog - An Apache error log viewer
 
     -f <regexp>       filter based on regexp
     -g [<interval>]   graph errors
-    -h                displays this help text
-    -i                show info and statistics
+    -h                show this help text
+    -i                show info spread vertically
     -l                list available logs
     -L                list available logs with details
     -m <n>            process a maximum of n errors, starting from the end
     -o <n>            process errors starting at an offset from the end
     -p                print log path
     -r <n>            rotation number
-    -v                verbosely show each error
+    -s                show statistics
 
     <name>            name of the log you are trying to access (regexp),
                       if name contains a "/", name is treated as a file name,
@@ -69,16 +69,19 @@ that error log is for.
 
 The -p option will show the path the selected error log file.
 
-The -f option will filter based on a given regexp for the -v or -g option.
+The -f option will filter based on a given regexp for the -i, -s, or -g option.
 
-The -v option will verbosely show each error on a line by itself with
-extra info (time, ip, etc) on the line before.
+The -s option will show statistics about the error log file such
+as how many errors there were, and their time frame.
 
-The -m option limits the maximum number of errors shown with the -v
-option or the -g option, starting from the end of the log (most recent).
+The -i option will show each error on a line by itself with extra info (time, ip,
+etc) on the line before.
 
-The -o option sets an offset to the errors shown with the -v option, so
-"elog -v -m 1" shows the last error, "elog -v -m 1 -o 1" shows the second
+The -m option limits the maximum number of errors shown with the -i, -s, or
+the -g option, starting from the end of the log (most recent).
+
+The -o option sets an offset to the errors shown with the -i option, so
+"elog -i -m 1" shows the last error, "elog -i -m 1 -o 1" shows the second
 to last error.
 
 The -g option will show a graph of the number of errors in hourly intervals. If provided an argument, it can be h for hourly, d for daily, or a number of seconds.
