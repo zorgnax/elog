@@ -670,7 +670,7 @@ sub select_log_rotation {
     }
     elsif ($rot =~ /^\d+$/) {
         my $rotations = get_rotations($file);
-        my $r = $rotations->[$rot - 1];
+        my $r = $rotations->[- $rot];
         if ($r) {
             $pfile = $r->{file};
         }

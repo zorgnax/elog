@@ -6,7 +6,6 @@ use Cwd ();
 use POSIX ();
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
-# TODO rotation 1 should be from the end of the list of rots
 # TODO -i becomes -s not info but stats
 # TODO -v becomes -i not verbose but info, and -V becomes -I
 
@@ -1031,7 +1030,7 @@ sub select_log_rotation {
     }
     elsif ($rot =~ /^\d+$/) {
         my $rotations = get_rotations($file);
-        my $r = $rotations->[$rot - 1];
+        my $r = $rotations->[- $rot];
         if ($r) {
             $pfile = $r->{file};
         }
