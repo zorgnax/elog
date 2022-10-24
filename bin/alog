@@ -6,6 +6,9 @@ use Cwd ();
 use POSIX ();
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
+# TODO rotation 1 should be from the end of the list of rots
+# TODO -i becomes -s not info but stats
+# TODO -v becomes -i not verbose but info, and -V becomes -I
 
 my %opts;
 my @logs;
@@ -375,11 +378,26 @@ sub parse_date {
 
 sub parse_access_line {
     my ($line, $log) = @_;
-    if ($log->{format}) {
+
+    # If its the first line being parsed, we use the log's format if there is one,
+    # if not, based on the content of the line, we could use a default format string,
+    # or parse the line a different way.
+    if ($line_count == 1) {
+        if ($selected_log->{format} && !$selected_log->{captures}) {
+            $selected_log->{captures} = parse_log_format($selected_log->{format});
+        }
+        elsif ($line =~ m{^(\S+) \s+ (\S+) \s+ (\S+) \s+ \[([^\]]+)\] \s+}x) {
+            # For lines like:
+            # 51.222.253.12 - - [20/Oct/2022:23:37:06 -0400] "GET /post/5345/thumb/blah.jpg HTTP/1.1" 200 108940 "-" "Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)"
+            my $default_format = '%a %l %u %t "%r" %s %B "%{Referer}i" "%{User-Agent}i"';
+            $selected_log->{captures} = parse_log_format($default_format);
+        }
+    }
+    if ($log->{captures}) {
         return parse_access_line_format($line, $log);
     }
     else {
-        return parse_access_line_default($line);
+        return parse_access_line_different($line);
     }
 }
 
@@ -395,7 +413,11 @@ sub parse_access_line_format {
         my $letter = $c->{letter};
         if ($line !~ /\G$regexp/gc) {
             # The log entry doesnt match the format, however some of it might have
-            # matched, so we can use that.
+            # matched, so we can use that. If it didn't get at least a datestr,
+            # then report the error.
+            if (!$a->{datestr}) {
+                warn "Unable to parse: $line\n";
+            }
             last;
         }
         my $value = $1;
@@ -519,27 +541,27 @@ sub parse_access_line_format {
 }
 
 sub parse_log_format {
-    my ($log) = @_;
+    my ($format) = @_;
     my @captures;
     my $prev;
     while (1) {
         my $c = {};
-        if ($log->{format} =~ /\G\s+/gc) {
+        if ($format =~ /\G\s+/gc) {
             $c->{regexp} = qr{\s+};
             $c->{whitespace} = 1;
         }
-        elsif ($log->{format} =~ /\G([^%\\\s]+)/gc) {
+        elsif ($format =~ /\G([^%\\\s]+)/gc) {
             $c->{regexp} = quotemeta($1);
         }
-        elsif ($log->{format} =~ /\G\\t/gc) {
+        elsif ($format =~ /\G\\t/gc) {
             $c->{regexp} = qr{\s+};
             $c->{whitespace} = 1;
         }
-        elsif ($log->{format} =~ /\G%t/gc) {
+        elsif ($format =~ /\G%t/gc) {
             $c->{letter} = "t";
             $c->{regexp} = qr{\[([^\]]*)\]};
         }
-        elsif ($log->{format} =~ /\G%r/gc) {
+        elsif ($format =~ /\G%r/gc) {
             $c->{letter} ="r";
             if ($prev && $prev->{regexp} =~ /"$/) {
                 $c->{regexp} = qr{((?:[^"]*|\\")*)};
@@ -548,7 +570,7 @@ sub parse_log_format {
                 $c->{regexp} = qr{(\S*)};
             }
         }
-        elsif ($log->{format} =~ /\G%(\{([^\}]*)\}|([<>]))?(\w)/gc) {
+        elsif ($format =~ /\G%(\{([^\}]*)\}|([<>]))?(\w)/gc) {
             $c->{curly} = $2;
             $c->{angle} = $3;
             $c->{letter} = $4;
@@ -568,35 +590,50 @@ sub parse_log_format {
         push @captures, $c;
         $prev = $c;
     }
-    $log->{captures} = \@captures;
+    if (!@captures) {
+        die "Unable to parse format: $format\n";
+    }
+    return \@captures;
 }
 
-sub parse_access_line_default {
+sub parse_access_line_different {
     my ($line) = @_;
+    # For lines like:
+    # unique_id:"Y0gPiJCuUIKvl11H6djHxgAAAUM" remote_host:"184.94.203.3"      client_IP:"184.94.203.3"        X-Real-IP:"92.205.104.221"      ident:"-"       user:"-"        time:"[13/Oct/2022:08:15:52 -0500]"     req:"GET /foo.cgi?asdf=436 HTTP/1.1" initial_status:200      final_status:200        resp_size:35    referer:"-"     ua:"Foo-Client/1.0"     reqtime_usec:158951     method:"GET"    url_orig:"/foo.cgi"       url_final:"/foo.cgi"      query_string:"?asdf=436"   local_ip:"10.255.1.3"   local_port:443  handler:"cgi-script"    file:"/var/www/foo/foo.cgi"    errid:- pid:4243        tid:139832986691328     req_size:1250   resp_with_headers:588   keep_alives:0   server_name:foo.bar.baz  vhost:qwe.foo.bar.baz
     my $a = {};
-    if ($line !~ m{
-            ^(\S+) \s+ (\S+) \s+ (\S+) \s+ \[([^\]]+)\] \s+
-            "(.+?)" \s+ (\S+) \s+ (\S+) \s+ "([^"]*)" \s+ "([^"]*)"
-        }x) {
-        return $a;
+    my %key_trans = (
+        "time" => "datestr",
+        "client_ip" => "ip",
+        "ua" => "user_agent",
+        "req" => "request",
+        "initial_status" => "status",
+        "final_status" => "status",
+        "reqtime_usec" => "reqtime",
+    );
+    while ($line =~ m{\G\s*([\w-]+):("([^"]|\\")*"|\S*)}gc) {
+        my $key = $1;
+        my $value = $2;
+        $value =~ s/^"|"$//g;
+        $value =~ s/^\[|\]$//g;
+        $key = lc $key;
+        $key =~ s/-/_/g;
+        if ($key_trans{$key}) {
+            $key = $key_trans{$key};
+        }
+        $a->{$key} = $value;
     }
-    $a->{ip} = $1;
-    $a->{ident} = $2;
-    $a->{user} = $3;
-    $a->{datestr} = $4;
-    $a->{request} = $5;
-    $a->{status} = $6;
-    $a->{bytes} = $7;
-    $a->{referer} = $8;
-    $a->{user_agent} = $9;
+    if (!$a->{datestr}) {
+        warn "Unable to parse: $line\n";
+    }
     process_access($a);
     return $a;
 }
 
 sub process_access {
     my ($a) = @_;
-    delete $a->{ident} if $a->{ident} && $a->{ident} eq "-";
-    delete $a->{user} if $a->{user} && $a->{user} eq "-";
+    delete $a->{ident} if !$a->{ident} || $a->{ident} eq "-";
+    delete $a->{user} if !$a->{user} || $a->{user} eq "-";
+    delete $a->{user_agent} if !$a->{user_agent} || $a->{user_agent} eq "-";
     $a->{bytes} = 0 if $a->{bytes} && $a->{bytes} eq "-";
     delete $a->{referer} if $a->{referer} && $a->{referer} eq "-";
     $a->{request} ||= "";
@@ -781,7 +818,9 @@ sub show_verbose_access {
         print "\n";
         return;
     }
-    print "agent $a->{user_agent}\n";
+    if ($a->{user_agent}) {
+        print "agent $a->{user_agent}\n";
+    }
     if ($a->{referer}) {
         print "referer $a->{referer}\n";
     }
@@ -835,9 +874,6 @@ sub loop_accesses {
         $filter = qr{$filter}i;
     }
     $line_count = 0;
-    if ($selected_log->{format} && !$selected_log->{captures}) {
-        parse_log_format($selected_log);
-    }
 
     while (my $line = <$fh>) {
         if ($filter && $line !~ $filter) {
